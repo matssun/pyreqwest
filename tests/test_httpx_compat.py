@@ -11,8 +11,8 @@ from pyreqwest.response import Response, SyncResponse
 
 from tests.utils import IS_CI
 
-from .servers.server import find_free_port
-from .servers.server_subprocess import SubprocessServer
+from tests.servers.server import find_free_port
+from tests.servers.server_subprocess import SubprocessServer
 
 
 @pytest.fixture

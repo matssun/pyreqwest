@@ -1,0 +1,240 @@
+# PyReqwest - Rust-powered HTTP client library with Python bindings
+# High-performance async HTTP client with reqwest backend
+#
+# Build approach: Compile Rust → shared library (.so), then wrap as py_library
+# No maturin needed — Bazel handles compilation via rules_rust
+
+load("@rules_rust//rust:defs.bzl", "rust_shared_library", "rust_test")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//infrastructure/bazel:python_defs.bzl", "smart_requirement")
+
+package(default_visibility = ["//visibility:public"])
+
+# Step 1: Build the Rust code as a shared library (.so / .dylib)
+rust_shared_library(
+    name = "pyreqwest_rs",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "pyreqwest",
+    edition = "2024",
+    rustc_flags = select({
+        "@platforms//os:macos": [
+            "-Clink-arg=-undefined",
+            "-Clink-arg=dynamic_lookup",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "@crates//:pyo3",
+        "@crates//:pyo3-bytes",
+        "@crates//:pythonize",
+        "@crates//:reqwest",
+        "@crates//:hyper",
+        "@crates//:rustls",
+        "@crates//:http",
+        "@crates//:tokio",
+        "@crates//:tokio-util",
+        "@crates//:futures-util",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:serde_urlencoded",
+        "@crates//:bytes",
+        "@crates//:url",
+        "@crates//:mime",
+        "@crates//:cookie",
+        "@crates//:cookie_store",
+        "@crates//:encoding_rs",
+        "@crates//:http-body-util",
+        "@crates//:pin-project",
+        "@crates//:time",
+        "@crates//:regex",
+        "@crates//:log",
+    ],
+)
+
+# Step 2: Rename the shared library to _pyreqwest.so
+# The Python package imports it as `from ._pyreqwest import ...`
+genrule(
+    name = "pyreqwest_so",
+    srcs = [":pyreqwest_rs"],
+    outs = ["python/pyreqwest/_pyreqwest.so"],
+    cmd = "cp $< $@",
+)
+
+# Step 3: Wrap as a standard Python library
+py_library(
+    name = "pyreqwest",
+    srcs = glob(["python/**/*.py"]),
+    data = [":pyreqwest_so"],
+    imports = ["python"],
+)
+
+# Rust unit tests
+rust_test(
+    name = "pyreqwest_rust_test",
+    crate = ":pyreqwest_rs",
+)
+
+# Test infrastructure library (servers, utilities, conftest)
+py_library(
+    name = "test_lib",
+    srcs = glob([
+        "tests/__init__.py",
+        "tests/conftest.py",
+        "tests/utils.py",
+        "tests/servers/**/*.py",
+    ]),
+    imports = ["."],
+    deps = [
+        ":pyreqwest",
+    ] + smart_requirement("pytest") +
+        smart_requirement("pytest-asyncio") +
+        smart_requirement("granian") +
+        smart_requirement("pydantic") +
+        smart_requirement("docker") +
+        smart_requirement("trustme"),
+    visibility = ["//visibility:private"],
+)
+
+# Smoke test: verify the native module loads and basic types work
+py_test(
+    name = "smoke_test",
+    srcs = ["tests/smoke_test.py"],
+    deps = [":pyreqwest"] + smart_requirement("pytest"),
+)
+
+# Python integration tests
+py_test(
+    name = "test_simple",
+    srcs = ["tests/test_simple.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_client",
+    srcs = ["tests/test_client.py"],
+    deps = [":test_lib"] +
+        smart_requirement("dirty_equals"),
+)
+
+py_test(
+    name = "test_request",
+    srcs = ["tests/test_request.py"],
+    deps = [":test_lib"] +
+        smart_requirement("syrupy"),
+)
+
+py_test(
+    name = "test_response",
+    srcs = ["tests/test_response.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_multipart",
+    srcs = ["tests/test_multipart.py"],
+    deps = [":test_lib"] +
+        smart_requirement("requests-toolbelt"),
+)
+
+py_test(
+    name = "test_request_builder",
+    srcs = ["tests/test_request_builder.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_cookie",
+    srcs = ["tests/test_cookie.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_header_map",
+    srcs = ["tests/test_header_map.py"],
+    deps = [":test_lib"] +
+        smart_requirement("dirty_equals") +
+        smart_requirement("multidict"),
+)
+
+py_test(
+    name = "test_url",
+    srcs = ["tests/test_url.py"],
+    deps = [":test_lib"] +
+        smart_requirement("yarl") +
+        smart_requirement("dirty_equals"),
+)
+
+py_test(
+    name = "test_middleware",
+    srcs = ["tests/test_middleware.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_logging",
+    srcs = ["tests/test_logging.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_stream",
+    srcs = ["tests/test_stream.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_sync",
+    srcs = ["tests/test_sync.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_runtime",
+    srcs = ["tests/test_runtime.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_mime",
+    srcs = ["tests/test_mime.py"],
+    deps = [":test_lib"] +
+        smart_requirement("dirty_equals"),
+)
+
+py_test(
+    name = "test_proxy",
+    srcs = ["tests/test_proxy.py"],
+    deps = [":test_lib"],
+)
+
+py_test(
+    name = "test_httpx_compat",
+    srcs = ["tests/test_httpx_compat.py"],
+    deps = [":test_lib"] +
+        smart_requirement("httpx"),
+)
+
+# Step 4: Package into a wheel for distribution
+genrule(
+    name = "pyreqwest_wheel",
+    srcs = [
+        ":pyreqwest_so",
+        "build_wheel.py",
+    ] + glob(["python/**/*.py", "python/**/*.pyi", "python/**/py.typed"]),
+    outs = ["pyreqwest-0.11.0-cp313-cp313-manylinux_2_28_aarch64.whl"],
+    cmd = "python3 $(location build_wheel.py)" +
+          " --so-path $(location :pyreqwest_so)" +
+          " --python-dir $$(dirname $(location python/pyreqwest/__init__.py))" +
+          " --out-dir $$(dirname $@)" +
+          " --platform manylinux_2_28_aarch64",
+)
+
+# Deploy wheel to Cloudsmith
+# Usage: bazel run //third_party/pyreqwest:push_to_cloudsmith
+sh_binary(
+    name = "push_to_cloudsmith",
+    srcs = ["push_wheel.sh"],
+    data = [":pyreqwest_wheel"],
+    args = ["$(location :pyreqwest_wheel)"],
+)

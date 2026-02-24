@@ -31,8 +31,8 @@ from pyreqwest.response import BaseResponse, Response, ResponseBodyReader
 
 from tests.utils import IS_CI, IS_OSX
 
-from .servers.server import find_free_port
-from .servers.server_subprocess import SubprocessServer
+from tests.servers.server import find_free_port
+from tests.servers.server_subprocess import SubprocessServer
 
 
 async def test_base_url(echo_server: SubprocessServer):
