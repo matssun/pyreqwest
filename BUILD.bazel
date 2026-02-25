@@ -78,8 +78,7 @@ rust_test(
 # Test infrastructure library (servers, utilities, conftest)
 py_library(
     name = "test_lib",
-    srcs = glob([
-        "tests/__init__.py",
+    srcs = ["tests/__init__.py"] + glob([
         "tests/conftest.py",
         "tests/utils.py",
         "tests/servers/**/*.py",
