@@ -37,6 +37,45 @@ def make_zipinfo(name: str) -> ZipInfo:
     return info
 
 
+ELF_MAGIC = b"\x7fELF"
+MACHO_MAGIC = {b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf"}
+
+
+def validate_so_platform(so_path: Path, platform_tag: str) -> None:
+    """Verify that the binary format of the .so matches the claimed platform tag.
+
+    Prevents accidentally packaging a macOS Mach-O binary into a Linux wheel,
+    which causes 'invalid ELF header' errors at runtime in containers.
+    """
+    header = so_path.read_bytes()[:4]
+    is_linux_platform = "linux" in platform_tag or "manylinux" in platform_tag
+
+    if is_linux_platform and header != ELF_MAGIC:
+        if header in MACHO_MAGIC:
+            print(
+                f"ERROR: {so_path.name} is a macOS Mach-O binary but platform_tag='{platform_tag}' "
+                f"claims Linux. Run this build inside a Linux container or CI, not on macOS.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"ERROR: {so_path.name} has unrecognised header {header.hex()!r}, "
+                f"expected ELF (7f454c46) for platform_tag='{platform_tag}'.",
+                file=sys.stderr,
+            )
+        sys.exit(1)
+
+    if not is_linux_platform and header in MACHO_MAGIC:
+        pass  # darwin binary for darwin wheel — correct
+
+    if not is_linux_platform and header == ELF_MAGIC:
+        print(
+            f"WARNING: {so_path.name} looks like an ELF Linux binary but platform_tag='{platform_tag}' "
+            f"is not a Linux platform. Continuing anyway.",
+            file=sys.stderr,
+        )
+
+
 def detect_so_name(platform_tag: str) -> str:
     """Determine the .so filename based on the platform tag."""
     python_tag = f"cpython-313-{'aarch64-linux-gnu' if 'linux' in platform_tag else 'darwin'}"
@@ -44,6 +83,7 @@ def detect_so_name(platform_tag: str) -> str:
 
 
 def build_wheel(so_path: Path, python_dir: Path, out_dir: Path, platform_tag: str) -> Path:
+    validate_so_platform(so_path, platform_tag)
     python_version = "cp313"
     wheel_name = f"{PACKAGE_NAME}-{VERSION}-{python_version}-{python_version}-{platform_tag}.whl"
     wheel_path = out_dir / wheel_name

@@ -215,6 +215,12 @@ py_test(
 )
 
 # Step 4: Package into a wheel for distribution
+#
+# IMPORTANT: This target must only be built on Linux ARM64.
+# Running it on macOS compiles a Mach-O binary which build_wheel.py will reject
+# with a clear error. Use CI or a Linux container:
+#   docker run --rm -v $PWD:/workspace -w /workspace ubuntu:22.04 \
+#       bazel run //third_party/pyreqwest:push_to_cloudsmith
 genrule(
     name = "pyreqwest_wheel",
     srcs = [
@@ -230,7 +236,9 @@ genrule(
 )
 
 # Deploy wheel to Cloudsmith
-# Usage: bazel run //third_party/pyreqwest:push_to_cloudsmith
+# Usage (Linux ARM64 only):
+#   bazel run //third_party/pyreqwest:push_to_cloudsmith
+# Running this on macOS will fail at the build_wheel.py validation step.
 sh_binary(
     name = "push_to_cloudsmith",
     srcs = ["push_wheel.sh"],
